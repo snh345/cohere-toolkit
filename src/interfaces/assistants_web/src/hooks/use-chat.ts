@@ -61,6 +61,7 @@ type ChatRequestOverrides = Pick<
   'temperature' | 'model' | 'preamble' | 'tools' | 'file_ids'
 > & {
   isHiddenRegeneration?: boolean; // Special flag for regeneration from flow diagram
+  inPlaceUpdate?: boolean; // Flag to indicate regeneration should update the existing message instead of creating a new one
 };
 
 export type HandleSendChat = (
@@ -186,6 +187,7 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
     request,
     headers,
     streamConverse,
+    updateInPlace = false,
   }: {
     newMessages: ChatMessage[];
     request: CohereChatRequest;
@@ -196,8 +198,12 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
       StreamingChatParams,
       unknown
     >;
+    updateInPlace?: boolean;
   }) => {
-    setConversation({ messages: newMessages });
+    // If we're updating in place, we don't want to update the messages state yet
+    if (!updateInPlace) {
+      setConversation({ messages: newMessages });
+    }
     const isRAGOn = isGroundingOn(request?.tools || [], request.file_ids || []);
     setStreamingMessage(
       createLoadingMessage({
@@ -425,19 +431,57 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
                 )
               : botResponse;
 
+            // For in-place updates, we need to make sure not to include the diagram prompt in the visible message
+            let visibleText = citations.length > 0 ? finalText : fixMarkdownImagesInText(transformedText);
+            let visibleOriginalText = isRAGOn ? responseText : botResponse;
+            
+            // Remove any prompt text from the response for hidden regenerations
+            if (updateInPlace && request.message && request.message.includes("thought process")) {
+              // The response might start with an acknowledgment of the diagram instructions
+              // Remove such preambles to clean up the regenerated response
+              const preamblePatterns = [
+                /^Based on the thought process provided.*?\n\n/i,
+                /^Following the reasoning structure.*?\n\n/i,
+                /^Based on the diagram.*?\n\n/i,
+                /^Here is a response that follows.*?\n\n/i,
+                /^According to the thought process.*?\n\n/i
+              ];
+              
+              for (const pattern of preamblePatterns) {
+                visibleText = visibleText.replace(pattern, '');
+                visibleOriginalText = visibleOriginalText.replace(pattern, '');
+              }
+            }
+            
             const finalMessage: FulfilledMessage = {
               id: data.message_id,
               type: MessageType.BOT,
               state: BotState.FULFILLED,
               generationId,
-              text: citations.length > 0 ? finalText : fixMarkdownImagesInText(transformedText),
+              text: visibleText,
               citations,
               isRAGOn,
-              originalText: isRAGOn ? responseText : botResponse,
+              originalText: visibleOriginalText,
               toolEvents,
             };
 
-            setConversation({ messages: [...newMessages, finalMessage] });
+            // Handle in-place updates differently - find the last assistant message and replace it
+            if (updateInPlace) {
+              const lastAssistantMessageIndex = newMessages.findLastIndex(m => m.type === MessageType.BOT);
+              if (lastAssistantMessageIndex >= 0) {
+                // Create a new array with the updated message
+                const updatedMessages = [...newMessages];
+                updatedMessages[lastAssistantMessageIndex] = finalMessage;
+                setConversation({ messages: updatedMessages });
+              } else {
+                // Fallback in case there's no assistant message to update
+                setConversation({ messages: [...newMessages, finalMessage] });
+              }
+            } else {
+              // Standard behavior - append the new message
+              setConversation({ messages: [...newMessages, finalMessage] });
+            }
+            
             setStreamingMessage(null);
 
             // Update our result object
@@ -555,7 +599,10 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
     // Check if this is a hidden regeneration (from the flow diagram)
     // If so, don't add a new user message to the conversation
     const isHiddenRegeneration = overrides?.isHiddenRegeneration === true;
-
+    // Check if this is an in-place update (for diagram regeneration)
+    const isInPlaceUpdate = overrides?.inPlaceUpdate === true;
+    
+    // For hidden regeneration, we don't want to include the prompt in the user messages
     if (!isHiddenRegeneration) {
       newMessages = newMessages.concat({
         type: MessageType.USER,
@@ -563,12 +610,20 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
         files: composerFiles,
       });
     }
+    
+    // Store the original message for later use
+    const originalPrompt = message;
 
+    // For in-place updates, we don't want to add the regenerated message to the conversation
+    // as that would create a new message - instead we'll replace the existing one
+    const shouldUpdateInPlace = isHiddenRegeneration && isInPlaceUpdate;
+    
     const result = await handleStreamConverse({
       newMessages,
       request,
       headers,
       streamConverse: streamChat,
+      updateInPlace: shouldUpdateInPlace
     });
     
     return result;

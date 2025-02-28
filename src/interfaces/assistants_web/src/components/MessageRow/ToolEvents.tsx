@@ -635,8 +635,8 @@ const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
       });
     });
     
-    // Format as a natural language prompt 
-    let prompt = "Please generate a response based on the following thought process:\n\n";
+    // Format as a natural language prompt with clear instructions not to reference the thought process
+    let prompt = "Based on the edited diagram, respond with a cohesive and direct answer that utilizes the following thought flow. DO NOT refer to these thoughts or mention them in your response - they are for your internal reasoning only:\n\n";
     
     // Add main path steps
     prompt += "Main thought path:\n";
@@ -658,16 +658,16 @@ const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
       });
     }
     
-    // Add instructions for format
-    prompt += "\nPlease provide a comprehensive response that follows this reasoning structure and incorporates insights from the alternative paths when relevant.";
+    // Add instructions for format with strong emphasis on not mentioning the diagram
+    prompt += "\nVERY IMPORTANT: Your response should be seamless and conversational. DO NOT mention the diagram, the steps, or that you are following a thought process. Simply provide a clean, direct response as if this structure was your own internal reasoning.";
     
     console.log('Submitting regeneration prompt:', prompt);
     
-    // Instead of calling submitMessage directly, we need to call a method
-    // that will bypass adding a user message to the UI
-    // Pass a special flag to the submit method to handle this as a "hidden" regeneration
+    // Pass special flags to indicate both hidden regeneration and in-place update
+    // to ensure the response updates the existing message bubble
     const result = await submitMessage(prompt, { 
-      isHiddenRegeneration: true 
+      isHiddenRegeneration: true,
+      inPlaceUpdate: true
     });
     
     // If we received a result with events and responseText, update our state

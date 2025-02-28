@@ -341,7 +341,7 @@ const FlowDiagramContent = ({
         onNodeClick={onNodeClick}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.2, maxZoom: 0.85 }}
         attributionPosition="bottom-right"
         style={{ width: '100%', height: '100%', backgroundColor: '#1a2236' }}
         proOptions={{ hideAttribution: true }}
@@ -1512,10 +1512,11 @@ return (
     title="Plan Flow Diagram"
     isOpen={isOpen}
     onClose={onClose}
+    dialogPaddingClassName="px-3 py-4"
   >
     <div 
-      className="w-full" 
-      style={{ height: "500px", width: "500px" }}
+       className="w-full mt-[-1rem]" 
+       style={{ height: "550px", width: "550px" }}
     >
       {!loaded ? (
         <div className="flex h-full items-center justify-center">
@@ -1528,13 +1529,13 @@ return (
       ) : (
         <ReactFlowProvider>
           <div className="flex flex-col h-full">
-            {/* Add controls at the top */}
-            <div className="flex justify-between items-center p-2 bg-gray-900 border-b border-gray-700">
-              <div className="text-sm text-gray-400">
-                {isRegenerating ? 'Regenerating responses...' : 'Edit the diagram and regenerate responses'}
+            {/* Add controls at the top - minimized */}
+            <div className="flex justify-between items-center px-1 py-0.5 bg-gray-900 border-b border-gray-800">
+              <div className="text-xs text-gray-400">
+              {isRegenerating ? 'Regenerating...' : 'Edit diagram'}
               </div>
               <button
-                className={`px-3 py-1 rounded flex items-center gap-1 text-sm ${
+                className={`px-1 py-0.5 rounded flex items-center gap-1 text-xs ${
                   isRegenerating 
                     ? 'bg-gray-700 text-gray-300 cursor-not-allowed' 
                     : 'bg-green-600 text-white hover:bg-green-700'
@@ -1544,18 +1545,18 @@ return (
               >
                 {isRegenerating ? (
                   <>
-                    <svg className="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Regenerating...
+                    Regenerating
                   </>
                 ) : (
                   <>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="16"
+                      width="12"
+                      height="12"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -1568,7 +1569,7 @@ return (
                       <path d="M3 22v-6h6"></path>
                       <path d="M21 12a9 9 0 0 1-15 6.7l-3 3"></path>
                     </svg>
-                    Regenerate Responses
+                    Regenerate
                   </>
                 )}
               </button>
