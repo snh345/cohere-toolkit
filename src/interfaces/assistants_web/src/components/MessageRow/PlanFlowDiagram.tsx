@@ -519,6 +519,7 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
   
   // Set up a listener for node content updates and new nodes/edges
   useEffect(() => {
+    // Old commented code kept for reference
     // const handleNodeUpdate = (e: Event) => {
     //   const customEvent = e as CustomEvent;
     //   const { id, data } = customEvent.detail;
@@ -535,18 +536,34 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
       const customEvent = e as CustomEvent;
       const { id, data } = customEvent.detail;
       
-      setNodes(nds => 
-        nds.map(node => 
+      // Update the current nodes state
+      setNodes(nds => {
+        const updatedNodes = nds.map(node => 
           node.id === id 
             ? { ...node, data: { ...data } }
             : node
-        )
-      );
+        );
+        
+        // If we're in a specific template, update its persisted state
+        if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+          setTemplateNodesMap(prev => ({
+            ...prev,
+            [selectedTemplate]: updatedNodes
+          }));
+        }
+        
+        // If we're in the "current" template, also update the initial state
+        if (selectedTemplate === 'current') {
+          setInitialNodes(updatedNodes);
+        }
+        
+        return updatedNodes;
+      });
     
       // Update edge styling if branch type changed
       if ('branchType' in data) {
-        setEdges(eds => 
-          eds.map(edge => {
+        setEdges(eds => {
+          const updatedEdges = eds.map(edge => {
             // If this edge connects to/from the updated node
             if (edge.source === id || edge.target === id) {
               const sourceNode = nodes.find(n => n.id === edge.source);
@@ -572,21 +589,74 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
               };
             }
             return edge;
-          })
-        );
+          });
+          
+          // Persist the updated edges state
+          if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+            setTemplateEdgesMap(prev => ({
+              ...prev,
+              [selectedTemplate]: updatedEdges
+            }));
+          }
+          
+          // If we're in the "current" template, also update the initial state
+          if (selectedTemplate === 'current') {
+            setInitialEdges(updatedEdges);
+          }
+          
+          return updatedEdges;
+        });
       }
     };
     
     const handleNodeAdd = (e: Event) => {
       const customEvent = e as CustomEvent;
       const newNode = customEvent.detail;
-      setNodes(nds => [...nds, newNode]);
+      
+      // Update the current nodes state
+      setNodes(nds => {
+        const updatedNodes = [...nds, newNode];
+        
+        // Persist the updated nodes state
+        if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+          setTemplateNodesMap(prev => ({
+            ...prev,
+            [selectedTemplate]: updatedNodes
+          }));
+        }
+        
+        // If we're in the "current" template, also update the initial state
+        if (selectedTemplate === 'current') {
+          setInitialNodes(updatedNodes);
+        }
+        
+        return updatedNodes;
+      });
     };
     
     const handleEdgeAdd = (e: Event) => {
       const customEvent = e as CustomEvent;
       const newEdge = customEvent.detail;
-      setEdges(eds => [...eds, newEdge]);
+      
+      // Update the current edges state
+      setEdges(eds => {
+        const updatedEdges = [...eds, newEdge];
+        
+        // Persist the updated edges state
+        if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+          setTemplateEdgesMap(prev => ({
+            ...prev,
+            [selectedTemplate]: updatedEdges
+          }));
+        }
+        
+        // If we're in the "current" template, also update the initial state
+        if (selectedTemplate === 'current') {
+          setInitialEdges(updatedEdges);
+        }
+        
+        return updatedEdges;
+      });
     };
     
     const handleBranchCreate = (e: Event) => {
@@ -691,12 +761,48 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
       targetPosition: Position.Top,
     };
     
-    // Add the branch to nodes
-    setNodes(nds => [...nds, branchNode]);
+    // Add the branch to nodes and persist changes
+    setNodes(nds => {
+      const updatedNodes = [...nds, branchNode];
+      
+      // Persist the updated nodes state
+      if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+        setTemplateNodesMap(prev => ({
+          ...prev,
+          [selectedTemplate]: updatedNodes
+        }));
+      }
+      
+      // If we're in the "current" template, also update the initial state
+      if (selectedTemplate === 'current') {
+        setInitialNodes(updatedNodes);
+      }
+      
+      return updatedNodes;
+    });
     
     // Create an edge from source to branch
     const newEdge = createEdge(sourceNodeId, branchNodeId, edges.length, 'alternative');
-    setEdges(eds => [...eds, newEdge]);
+    
+    // Add the edge and persist changes
+    setEdges(eds => {
+      const updatedEdges = [...eds, newEdge];
+      
+      // Persist the updated edges state
+      if (selectedTemplate !== 'current' && selectedTemplate !== '') {
+        setTemplateEdgesMap(prev => ({
+          ...prev,
+          [selectedTemplate]: updatedEdges
+        }));
+      }
+      
+      // If we're in the "current" template, also update the initial state
+      if (selectedTemplate === 'current') {
+        setInitialEdges(updatedEdges);
+      }
+      
+      return updatedEdges;
+    });
   };
 
   // Handle node click to set the selected node
@@ -1301,15 +1407,58 @@ const flowTemplates: FlowTemplate[] = [
   }
 ];
 
+// Store the initial diagram state for returning to "Current Flow"
+const [initialNodes, setInitialNodes] = useState<Node<PlanStepNodeData>[]>([]);
+const [initialEdges, setInitialEdges] = useState<Edge[]>([]);
+
+// Store the current template's nodes and edges for persistence
+const [templateNodesMap, setTemplateNodesMap] = useState<Record<string, Node<PlanStepNodeData>[]>>({});
+const [templateEdgesMap, setTemplateEdgesMap] = useState<Record<string, Edge[]>>({});
+
+// Save initial diagram state when first loaded
+useEffect(() => {
+  if (loaded && nodes.length > 0 && initialNodes.length === 0) {
+    setInitialNodes([...nodes]);
+    setInitialEdges([...edges]);
+  }
+}, [loaded, nodes, edges, initialNodes.length]);
+
 // Function to load a selected template
 const loadTemplate = (templateId: string) => {
+  // Before switching templates, save current state to the template map for persistence
+  if (selectedTemplate !== '' && selectedTemplate !== 'current') {
+    setTemplateNodesMap(prev => ({
+      ...prev,
+      [selectedTemplate]: [...nodes]
+    }));
+    setTemplateEdgesMap(prev => ({
+      ...prev,
+      [selectedTemplate]: [...edges]
+    }));
+  }
+  
+  // Always update the selected template state
+  setSelectedTemplate(templateId);
+  
   if (templateId === 'current') {
-    // Keep current flow, do nothing
+    // Restore the initial flow
+    if (initialNodes.length > 0) {
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+    }
     return;
   }
   
   const template = flowTemplates.find(t => t.id === templateId);
   if (!template) return;
+  
+  // Check if we have persisted state for this template
+  if (templateNodesMap[templateId] && templateEdgesMap[templateId]) {
+    // Restore the persisted state
+    setNodes(templateNodesMap[templateId]);
+    setEdges(templateEdgesMap[templateId]);
+    return;
+  }
   
   // Convert template nodes to ReactFlow nodes using our helper function
   const diagramNodes = template.nodes.map(node => {
