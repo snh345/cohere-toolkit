@@ -210,6 +210,7 @@ import { useFixCopyBug } from '@/hooks';
 import { useSynthesizer } from '@/hooks/use-synthesizer';
 import { ConfigurableParams } from '@/stores/slices/paramsSlice';
 import { ChatMessage, MessageType, StreamingMessage, isFulfilledMessage } from '@/types/message';
+import { RegenerationData } from '@/types/tools';
 import { cn } from '@/utils';
 
 const ScrollToBottom = dynamic(() => import('react-scroll-to-bottom'), { ssr: false });
@@ -228,7 +229,7 @@ type Props = {
   scrollViewClassName?: string;
   // New props for flow diagram regeneration
   handleSend?: (message?: string, overrides?: Partial<ConfigurableParams>) => Promise<any>;
-  onRegenerateFromFlow?: (responseText: string, newEvents: StreamToolCallsGeneration[]) => void;
+  onRegenerateFromFlow?: (flowData: RegenerationData) => Promise<void>;
 };
 
 /**

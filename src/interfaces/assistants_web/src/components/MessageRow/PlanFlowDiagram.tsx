@@ -26,6 +26,7 @@ import '@xyflow/react/dist/style.css';
 import { Modal } from '@/components/UI';
 import { initialEdges, edgeTypes } from "../edges";
 import { StreamToolCallsGeneration } from '@/cohere-client';
+import { RegenerationData } from '@/types/tools';
 
 // Custom node component with proper typing and explicit handles
 type PlanStepNodeData = {
@@ -35,6 +36,8 @@ type PlanStepNodeData = {
   isEditing?: boolean;
   branchType?: 'primary' | 'alternative';
 };
+
+// Helper function for creating PlanStepNode will be defined after getIconComponent
 
 // Node with explicit handles for better connection control
 // NEW
@@ -452,7 +455,7 @@ type PlanFlowDiagramProps = {
   isOpen: boolean;
   onClose: () => void;
   events: StreamToolCallsGeneration[] | undefined;
-  onRegenerateFromFlow?: (flowData: RegenerationData) => Promise<void>; // New callback prop
+  onRegenerateFromFlow?: (flowData: RegenerationData) => Promise<void>; // Updated type
 };
 
 // Define flow template types
@@ -460,36 +463,11 @@ type FlowTemplate = {
   id: string;
   name: string;
   description: string;
-  nodes: {
-    id: string;
-    title: string;
-    content: string;
-    branchType: 'primary' | 'alternative';
-    position: { x: number; y: number };
-  }[];
-  edges: {
-    source: string;
-    target: string;
-    branchType: 'primary' | 'alternative';
-  }[];
+  nodes: RegenerationData['nodes'];
+  edges: RegenerationData['edges'];
 };
 
-// Create a type for the data we'll send for regeneration
-type RegenerationData = {
-  nodes: {
-    id: string;
-    content: string;
-    title?: string;
-    parentId?: string;
-    branchType: string;
-    position: { x: number; y: number };
-  }[];
-  edges: {
-    source: string;
-    target: string;
-    branchType: string;
-  }[];
-};
+// We're using the imported RegenerationData type from @/types/tools
 
 const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({ 
   isOpen, 
@@ -852,6 +830,33 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
     return iconMap[toolName] || iconMap.list;
   };
 
+  // Helper function to create properly typed nodes
+  const createPlanStepNode = (
+    id: string, 
+    position: { x: number, y: number }, 
+    content: string,
+    title: string | undefined,
+    iconName: string,
+    branchType: string,
+    draggable: boolean = true
+  ): Node<PlanStepNodeData> => {
+    // Ensure valid branch type
+    const safeBranchType = branchType === 'alternative' ? 'alternative' : 'primary';
+    
+    return {
+      id,
+      type: 'planStep',
+      position,
+      data: {
+        content,
+        title,
+        icon: getIconComponent(iconName),
+        branchType: safeBranchType,
+      },
+      draggable,
+    };
+  };
+
   // Helper function to safely extract document information
   const extractDocumentInfo = (doc: any): { title?: string; url?: string } => {
     if (doc) {
@@ -870,6 +875,7 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
       return;
     }
 
+    // Explicitly type the nodes with the exact same type expected by useNodesState
     const diagramNodes: Node<PlanStepNodeData>[] = [];
     const diagramEdges: Edge[] = [];
     let nodeId = 0;
@@ -883,18 +889,16 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
       // Add plan text if available
       if (event.text && event.text.trim() !== '') {
         const id = `node-${nodeId}`;
-        diagramNodes.push({
-          id,
-          type: 'planStep',
-          position: { x: startX, y: startY + nodeId * ySpacing },
-          data: {
-            content: event.text,
-            title: 'Plan',
-            icon: getIconComponent('list'),
-            branchType: 'primary',
-          },
-          draggable: true,
-        });
+        diagramNodes.push(
+          createPlanStepNode(
+            id,                                 // id
+            { x: startX, y: startY + nodeId * ySpacing }, // position
+            event.text,                         // content
+            'Plan',                             // title
+            'list',                             // iconName
+            'primary'                           // branchType
+          )
+        );
         
         // Connect to previous node
         if (nodeId > 0) {
@@ -926,18 +930,16 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
             }
           }
 
-          diagramNodes.push({
-            id,
-            type: 'planStep',
-            position: { x: startX, y: startY + nodeId * ySpacing },
-            data: {
+          diagramNodes.push(
+            createPlanStepNode(
+              id,
+              { x: startX, y: startY + nodeId * ySpacing },
               content,
-              title: toolName,
-              icon: getIconComponent(iconName),
-              branchType: 'primary',
-            },
-            draggable: true,
-          });
+              toolName,
+              iconName,
+              'primary'
+            )
+          );
 
           // Connect to previous node
           if (nodeId > 0) {
@@ -970,20 +972,20 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
         
         if (docTitles.length > 0) {
           const id = `node-${nodeId}`;
-          diagramNodes.push({
-            id,
-            type: 'planStep',
-            position: { x: startX, y: startY + nodeId * ySpacing },
-            data: {
-              content: `Found resources: ${docTitles.join(', ')}${
-                documents.length > 3 ? ` and ${documents.length - 3} more` : ''
-              }`,
-              title: 'Search Results',
-              icon: getIconComponent('book-open-text'),
-              branchType: 'primary',
-            },
-            draggable: true,
-          });
+          const resultsContent = `Found resources: ${docTitles.join(', ')}${
+            documents.length > 3 ? ` and ${documents.length - 3} more` : ''
+          }`;
+          
+          diagramNodes.push(
+            createPlanStepNode(
+              id,
+              { x: startX, y: startY + nodeId * ySpacing },
+              resultsContent,
+              'Search Results',
+              'book-open-text',
+              'primary'
+            )
+          );
 
           // Connect to previous node
           if (nodeId > 0) {
@@ -998,18 +1000,16 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
     if (nodeId > 0) {
       // Add final response node
       const finalId = `node-${nodeId}`;
-      diagramNodes.push({
-        id: finalId,
-        type: 'planStep',
-        position: { x: startX, y: startY + nodeId * ySpacing },
-        data: {
-          content: 'Generate final response based on collected information',
-          title: 'Final Response',
-          icon: getIconComponent('list'),
-          branchType: 'primary',
-        },
-        draggable: true,
-      });
+      diagramNodes.push(
+        createPlanStepNode(
+          finalId,
+          { x: startX, y: startY + nodeId * ySpacing },
+          'Generate final response based on collected information',
+          'Final Response',
+          'list',
+          'primary'
+        )
+      );
 
       // Connect to previous node
       if (nodeId > 0) {
@@ -1426,21 +1426,24 @@ const loadTemplate = (templateId: string) => {
   const template = flowTemplates.find(t => t.id === templateId);
   if (!template) return;
   
-  // Convert template nodes to ReactFlow nodes
-  const diagramNodes = template.nodes.map(node => ({
-    id: node.id,
-    type: 'planStep' as const,
-    position: { x: node.position.x, y: node.position.y },
-    data: {
-      content: node.content,
-      title: node.title,
-      icon: getIconComponent(node.title.toLowerCase().includes('search') ? 'search' : 
-                            node.title.toLowerCase().includes('code') || 
-                            node.title.toLowerCase().includes('calculate') ? 'calculator' : 'list'),
-      branchType: node.branchType,
-    },
-    draggable: true,
-  }));
+  // Convert template nodes to ReactFlow nodes using our helper function
+  const diagramNodes = template.nodes.map(node => {
+    // Determine icon based on title
+    const iconType = 
+      (node.title?.toLowerCase() || '').includes('search') ? 'search' : 
+      (node.title?.toLowerCase() || '').includes('code') || 
+      (node.title?.toLowerCase() || '').includes('calculate') ? 'calculator' : 'list';
+    
+    // Use our helper function to create a properly typed node
+    return createPlanStepNode(
+      node.id,
+      { x: node.position.x, y: node.position.y },
+      node.content,
+      node.title,
+      iconType,
+      node.branchType
+    );
+  });
   
   // Convert template edges to ReactFlow edges
   const diagramEdges = template.edges.map((edge, index) => createEdge(
@@ -1486,16 +1489,25 @@ const handleRegenerate = async () => {
       setPreviewResponse(previewContent);
     }, 1000);
     
-    // Call the actual regeneration function
-    await onRegenerateFromFlow(flowData);
+    // Simulate a regeneration with mock data for demo purposes
+    // In a real implementation, this would call an API to generate a response
+    const mockResponse = "This is a regenerated response based on your flow diagram.";
+    const mockEvents = [...(events || [])]; // Clone existing events
+    
+    // Simulate delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Call the regenerate callback with flow data
+    if (onRegenerateFromFlow) {
+      await onRegenerateFromFlow(flowData);
+    }
     
     // Clear the interval after regeneration completes
     clearInterval(streamingInterval);
     
     // Add final response
-    previewContent += "\n## Final Response\nHere is the regenerated response based on your flow diagram modifications. " + 
-      "This content would typically be populated with the actual AI-generated response " +
-      "rather than this placeholder text.";
+    previewContent += "\n## Final Response\nThe response has been regenerated based on your flow diagram modifications. " + 
+      "Close this dialog to see the updated response.";
     setPreviewResponse(previewContent);
     
   } catch (error) {

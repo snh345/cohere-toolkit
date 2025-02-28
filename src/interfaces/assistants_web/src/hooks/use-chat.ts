@@ -64,6 +64,16 @@ type ChatRequestOverrides = Pick<
   inPlaceUpdate?: boolean; // Flag to indicate regeneration should update the existing message instead of creating a new one
 };
 
+// export type HandleSendChat = (
+//   {
+//     currentMessages,
+//     suggestedMessage,
+//   }: {
+//     currentMessages?: ChatMessage[];
+//     suggestedMessage?: string;
+//   },
+//   overrides?: ChatRequestOverrides
+// ) => Promise<void>;
 export type HandleSendChat = (
   {
     currentMessages,
@@ -73,7 +83,7 @@ export type HandleSendChat = (
     suggestedMessage?: string;
   },
   overrides?: ChatRequestOverrides
-) => Promise<void>;
+) => Promise<{ responseText?: string; events?: StreamToolCallsGeneration[] } | undefined>;
 
 export const useChat = (config?: { onSend?: (msg: string) => void }) => {
   const { chatMutation, abortController } = useStreamChat();
@@ -467,7 +477,15 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
 
             // Handle in-place updates differently - find the last assistant message and replace it
             if (updateInPlace) {
-              const lastAssistantMessageIndex = newMessages.findLastIndex(m => m.type === MessageType.BOT);
+              // Find the last index of a bot message
+              let lastAssistantMessageIndex = -1;
+              for (let i = newMessages.length - 1; i >= 0; i--) {
+                if (newMessages[i].type === MessageType.BOT) {
+                  lastAssistantMessageIndex = i;
+                  break;
+                }
+              }
+              
               if (lastAssistantMessageIndex >= 0) {
                 // Create a new array with the updated message
                 const updatedMessages = [...newMessages];
@@ -507,7 +525,7 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
           let errorMessage = networkError.message ?? USER_ERROR_MESSAGE;
 
           setConversation({
-            messages: newMessages.map((m, i) =>
+            messages: newMessages.map((m: ChatMessage, i: number) =>
               i < newMessages.length - 1
                 ? m
                 : { ...m, error: `[${networkError.status}] ${errorMessage}` }
@@ -576,7 +594,7 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
   const handleChat: HandleSendChat = async (
     { currentMessages = messages, suggestedMessage },
     overrides?: ChatRequestOverrides
-  ) => {
+  ): Promise<{ responseText?: string; events?: StreamToolCallsGeneration[] } | undefined> => {
     const message = (suggestedMessage || userMessage || '').trim();
     if (message.length === 0 || isStreaming) {
       return;
@@ -611,8 +629,7 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
       });
     }
     
-    // Store the original message for later use
-    const originalPrompt = message;
+    // Remove unused variable declaration
 
     // For in-place updates, we don't want to add the regenerated message to the conversation
     // as that would create a new message - instead we'll replace the existing one
@@ -646,7 +663,14 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
   };
 
   const handleRegenerate = async () => {
-    const latestUserMessageIndex = messages.findLastIndex((m) => m.type === MessageType.USER);
+    // Find the last index of a user message
+    let latestUserMessageIndex = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type === MessageType.USER) {
+        latestUserMessageIndex = i;
+        break;
+      }
+    }
 
     if (latestUserMessageIndex === -1 || isStreaming) {
       return;

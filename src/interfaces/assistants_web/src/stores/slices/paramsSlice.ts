@@ -20,6 +20,8 @@ export type ConfigurableParams = Pick<CohereChatRequest, 'temperature' | 'tools'
   model?: string;
   deployment?: string;
   deploymentConfig?: string;
+  isHiddenRegeneration?: boolean;
+  inPlaceUpdate?: boolean;
 };
 
 type State = ConfigurableParams;

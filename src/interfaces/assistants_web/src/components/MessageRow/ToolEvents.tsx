@@ -355,30 +355,17 @@ import {
 import { cn, getToolIcon, getValidURL } from '@/utils';
 import PlanFlowDiagram from './PlanFlowDiagram';
 
-// Type for regeneration data from flow
-type RegenerationData = {
-  nodes: {
-    id: string;
-    content: string;
-    title?: string;
-    branchType: string;
-    position: { x: number; y: number };
-  }[];
-  edges: {
-    source: string;
-    target: string;
-    branchType: string;
-  }[];
-};
+// Import RegenerationData type 
+import { RegenerationData } from '@/types/tools';
 
 type Props = {
   show: boolean;
   isStreaming: boolean;
   isLast: boolean;
   events: StreamToolCallsGeneration[] | undefined;
-  onRegenerate?: (response: string, events: StreamToolCallsGeneration[]) => void;
+  onRegenerateFromFlow?: (flowData: RegenerationData) => Promise<void>;
   // Add reference to the existing message submission function
-  submitMessage?: (message: string) => Promise<any>;
+  submitMessage?: (message: string, overrides?: any) => Promise<any>;
 };
 
 const hasToolErrorsDocuments = (search_results: StreamSearchResults | null) => {
@@ -396,7 +383,7 @@ export const ToolEvents: React.FC<Props> = ({
   isStreaming, 
   isLast, 
   events,
-  onRegenerate,
+  onRegenerateFromFlow,
   submitMessage
 }) => {
   const [showFlowDiagram, setShowFlowDiagram] = useState(false);
@@ -530,171 +517,28 @@ type AlternativePath = {
 };
 
 // Handle regeneration from flow diagram using the existing endpoint
-const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
-  if (!submitMessage) {
-    return "Error: Message submission function not available. Cannot regenerate.";
-  }
-  
-  try {
-    setIsRegenerating(true);
-    
-    // Extract all nodes and edges 
-    const { nodes, edges } = flowData;
-    
-    // Identify primary and alternative nodes
-    const primaryNodes = nodes
-      .filter(node => node.branchType === 'primary' || !node.branchType)
-      .sort((a, b) => a.position.y - b.position.y);
-    
-    const alternativeNodes = nodes
-      .filter(node => node.branchType === 'alternative');
-    
-    // Create a graph representation for traversal
-    const nodeConnections = new Map<string, NodeConnection[]>();
-    edges.forEach(edge => {
-      if (!nodeConnections.has(edge.source)) {
-        nodeConnections.set(edge.source, []);
-      }
-      nodeConnections.get(edge.source)!.push({
-        target: edge.target,
-        branchType: edge.branchType
-      });
-    });
-    
-    // Find all branch points - where a primary node connects to an alternative node
-    const branchPoints: Array<{
-      primaryNode: RegenerationData['nodes'][0],
-      alternativeStartNodes: RegenerationData['nodes'][0][]
-    }> = [];
-    
-    // For each primary node, find all alternative nodes it connects to
-    primaryNodes.forEach(primaryNode => {
-      const connections = nodeConnections.get(primaryNode.id) || [];
-      const alternativeTargets: RegenerationData['nodes'][0][] = [];
-      
-      connections.forEach(conn => {
-        // Find the target node
-        const targetNode = nodes.find(n => n.id === conn.target);
-        
-        // Check if the target node is an alternative node
-        if (targetNode && targetNode.branchType === 'alternative') {
-          alternativeTargets.push(targetNode);
-        }
-      });
-      
-      if (alternativeTargets.length > 0) {
-        branchPoints.push({
-          primaryNode,
-          alternativeStartNodes: alternativeTargets
-        });
-      }
-    });
-    
-    // For each branch point, trace all possible alternative paths
-    const alternativePaths: Array<{
-      fromPrimaryNode: RegenerationData['nodes'][0],
-      alternativePath: RegenerationData['nodes'][0][]
-    }> = [];
-    
-    branchPoints.forEach(branchPoint => {
-      const { primaryNode, alternativeStartNodes } = branchPoint;
-      
-      // For each alternative starting node, trace a path through the graph
-      alternativeStartNodes.forEach(startNode => {
-        const path: RegenerationData['nodes'][0][] = [startNode];
-        const visited = new Set<string>([startNode.id]);
-        
-        let currentNodeId = startNode.id;
-        
-        // Follow the path as far as possible
-        while (true) {
-          const nextConnections = nodeConnections.get(currentNodeId) || [];
-          if (nextConnections.length === 0) break;
-          
-          // Find the next unvisited node
-          const nextConn = nextConnections.find(conn => !visited.has(conn.target));
-          if (!nextConn) break;
-          
-          // Find the node object
-          const nextNode = nodes.find(n => n.id === nextConn.target);
-          if (!nextNode) break;
-          
-          // Add to the path and continue
-          path.push(nextNode);
-          visited.add(nextNode.id);
-          currentNodeId = nextNode.id;
-        }
-        
-        // Store this alternative path
-        if (path.length > 0) {
-          alternativePaths.push({
-            fromPrimaryNode: primaryNode,
-            alternativePath: path
-          });
-        }
-      });
-    });
-    
-    // Format as a natural language prompt with clear instructions not to reference the thought process
-    let prompt = "Based on the edited diagram, respond with a cohesive and direct answer that utilizes the following thought flow. DO NOT refer to these thoughts or mention them in your response - they are for your internal reasoning only:\n\n";
-    
-    // Add main path steps
-    prompt += "Main thought path:\n";
-    primaryNodes.forEach((node, index) => {
-      prompt += `${index + 1}. ${node.title || 'Step'}: ${node.content}\n`;
-    });
-    
-    // Add alternative paths if they exist
-    if (alternativePaths.length > 0) {
-      prompt += "\nAlternative thought paths to consider:\n";
-      alternativePaths.forEach((pathInfo, pathIndex) => {
-        const primaryNodeIndex = primaryNodes.findIndex(n => n.id === pathInfo.fromPrimaryNode.id);
-        
-        prompt += `Alternative ${pathIndex + 1} (branches from main step ${primaryNodeIndex + 1}):\n`;
-        pathInfo.alternativePath.forEach((node, nodeIndex) => {
-          prompt += `  - ${node.title || 'Step'}: ${node.content}\n`;
-        });
-        prompt += "\n";
-      });
-    }
-    
-    // Add instructions for format with strong emphasis on not mentioning the diagram
-    prompt += "\nVERY IMPORTANT: Your response should be seamless and conversational. DO NOT mention the diagram, the steps, or that you are following a thought process. Simply provide a clean, direct response as if this structure was your own internal reasoning.";
-    
-    console.log('Submitting regeneration prompt:', prompt);
-    
-    // Pass special flags to indicate both hidden regeneration and in-place update
-    // to ensure the response updates the existing message bubble
-    const result = await submitMessage(prompt, { 
-      isHiddenRegeneration: true,
-      inPlaceUpdate: true
-    });
-    
-    // If we received a result with events and responseText, update our state
-    if (result && result.events) {
-      setRegeneratedEvents(result.events);
-    }
-    
-    if (result && result.responseText) {
-      setRegeneratedResponse(result.responseText);
-      
-      // Call parent callback if provided - this will update the message bubble
-      if (onRegenerate && result.events) {
-        onRegenerate(result.responseText, result.events);
-      }
-      
-      return result.responseText;
-    }
-    
-    return "Regeneration complete. You'll see the updated response when you close this dialog.";
-    
-  } catch (error) {
-    console.error('Error regenerating from flow:', error);
-    return "Error: Failed to regenerate response. Please try again.";
-  } finally {
-    setIsRegenerating(false);
-  }
-};
+// No longer needs to be in this component - this code is obsolete since PlanFlowDiagram 
+// now directly calls the parent onRegenerateFromFlow callback
+// const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
+//   if (!onRegenerateFromFlow) {
+//     return "Error: Regeneration callback not available. Cannot regenerate.";
+//   }
+//   
+//   try {
+//     setIsRegenerating(true);
+//     
+//     // Call the onRegenerateFromFlow callback with flow data
+//     await onRegenerateFromFlow(flowData);
+//     
+//     return "Regeneration complete. You'll see the updated response when you close this dialog.";
+//     
+//   } catch (error) {
+//     console.error('Error regenerating from flow:', error);
+//     return "Error: Failed to regenerate response. Please try again.";
+//   } finally {
+//     setIsRegenerating(false);
+//   }
+// };
 // const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
 //   if (!submitMessage) {
 //     return "Error: Message submission function not available. Cannot regenerate.";
@@ -838,14 +682,9 @@ const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
 //   }
 // };
 
-  // When closing the diagram with regenerated content, update the parent component
+  // When closing the diagram, just close it
   const handleCloseFlowDiagram = () => {
     setShowFlowDiagram(false);
-    
-    // If there's regenerated content and the parent provided a callback, update the parent
-    if (regeneratedResponse && regeneratedEvents && onRegenerate) {
-      onRegenerate(regeneratedResponse, regeneratedEvents);
-    }
   };
 
   return (
@@ -904,7 +743,7 @@ const handleRegenerateFromFlow = async (flowData: RegenerationData) => {
         isOpen={showFlowDiagram}
         onClose={handleCloseFlowDiagram}
         events={regeneratedEvents || events}
-        onRegenerateFromFlow={submitMessage ? handleRegenerateFromFlow : undefined}
+        onRegenerateFromFlow={onRegenerateFromFlow}
       />
     </Transition>
   );

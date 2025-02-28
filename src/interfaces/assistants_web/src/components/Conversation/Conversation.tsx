@@ -119,27 +119,13 @@ import {
 import { useConversationStore } from '@/stores';
 import { ConfigurableParams } from '@/stores/slices/paramsSlice';
 import { ChatMessage } from '@/types/message';
+import { RegenerationData } from '@/types/tools';
 
 type Props = {
   startOptionsEnabled?: boolean;
   agent?: AgentPublic;
   tools?: ToolDefinition[];
   history?: ChatMessage[];
-};
-
-type RegenerationData = {
-  nodes: Array<{
-    id: string;
-    content: string;
-    title?: string;
-    branchType: string;
-    position: { x: number; y: number };
-  }>;
-  edges: Array<{
-    source: string;
-    target: string;
-    branchType: string;
-  }>;
 };
 
 /**
@@ -196,14 +182,39 @@ export const Conversation: React.FC<Props> = ({ agent, tools, startOptionsEnable
   };
 
   // This will be called when a response is regenerated from the flow diagram
-  const handleRegenerateFromFlow = (responseText: string, newEvents: StreamToolCallsGeneration[]) => {
-    console.log("Regenerated response from flow:", responseText);
+  const handleRegenerateFromFlow = async (flowData: RegenerationData): Promise<void> => {
+    console.log("Regenerating response from flow diagram...", flowData);
     
-    // This just needs to update the UI with the regenerated response
-    // The actual updating happened in ToolEvents.tsx through the onRegenerate callback
+    // Extract the main path nodes for the prompt
+    const mainPathNodes = (flowData.nodes || [])
+      .filter(node => node.branchType === 'primary')
+      .sort((a, b) => a.position.y - b.position.y);
     
-    // No actual return value needed since we're just updating UI state
-    // The actual API call happened in ToolEvents
+    // Create a structured prompt from the thought process in the diagram
+    let prompt = "Please regenerate a response following this thought process:\n\n";
+    
+    mainPathNodes.forEach((node, index) => {
+      prompt += `Step ${index + 1}: ${node.title || 'Step'}\n${node.content}\n\n`;
+    });
+    
+    // Include alternative branches if any exist
+    const altBranches = (flowData.nodes || []).filter(node => node.branchType === 'alternative');
+    if (altBranches.length > 0) {
+      prompt += "Alternative considerations:\n";
+      altBranches.forEach((node, index) => {
+        prompt += `- ${node.title || 'Alternative ' + (index + 1)}: ${node.content}\n`;
+      });
+      prompt += "\n";
+    }
+    
+    // Send the regeneration request with special overrides
+    if (handleSend) {
+      await handleSend(prompt, {
+        // Mark this as a hidden regeneration that updates in place
+        isHiddenRegeneration: true,
+        inPlaceUpdate: true
+      });
+    }
   };
     return (
       <div className="flex h-full flex-grow">
@@ -221,7 +232,7 @@ export const Conversation: React.FC<Props> = ({ agent, tools, startOptionsEnable
               streamingMessage={streamingMessage}
               agentId={agent?.id}
               handleSend={handleSend}
-              onRegenerateFromFlow={handleRegenerateFromFlow}
+              onRegenerateFromFlow={async (flowData) => await handleRegenerateFromFlow(flowData)}
               composer={
               <>
                 <WelcomeGuideTooltip step={3} className="absolute bottom-full mb-4" />

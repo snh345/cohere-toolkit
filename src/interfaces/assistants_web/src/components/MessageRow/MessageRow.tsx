@@ -247,6 +247,7 @@ import {
   isFulfilledOrTypingMessage,
   isUserMessage,
 } from '@/types/message';
+import { RegenerationData } from '@/types/tools';
 import { cn } from '@/utils';
 
 type Props = {
@@ -263,7 +264,7 @@ type Props = {
   onToggleSynthesis?: VoidFunction;
   // New props for flow diagram regeneration
   handleSend?: (message?: string, overrides?: Partial<ConfigurableParams>) => Promise<any>;
-  onRegenerateFromFlow?: (responseText: string, newEvents: StreamToolCallsGeneration[]) => void;
+  onRegenerateFromFlow?: (flowData: RegenerationData) => Promise<void>;
 };
 
 /**
@@ -388,7 +389,7 @@ export const MessageRow = forwardRef<HTMLDivElement, Props>(function MessageRowI
                   isLast={isLast}
                   // Pass the new props for regeneration
                   submitMessage={handleSend}
-                  onRegenerate={onRegenerateFromFlow}
+                  onRegenerateFromFlow={onRegenerateFromFlow}
                 />
               )}
 
