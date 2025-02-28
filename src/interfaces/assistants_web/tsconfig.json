@@ -30,6 +30,7 @@
     "declarationMap": false,
     "moduleResolution": "node",
     "noUnusedLocals": false,
+    "noImplicitAny": true,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
     "strictNullChecks": true,

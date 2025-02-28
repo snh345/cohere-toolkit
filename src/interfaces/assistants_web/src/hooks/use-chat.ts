@@ -59,7 +59,9 @@ type IdToDocument = { [documentId: string]: Document };
 type ChatRequestOverrides = Pick<
   CohereChatRequest,
   'temperature' | 'model' | 'preamble' | 'tools' | 'file_ids'
->;
+> & {
+  isHiddenRegeneration?: boolean; // Special flag for regeneration from flow diagram
+};
 
 export type HandleSendChat = (
   {
@@ -203,6 +205,9 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
         isRAGOn,
       })
     );
+    
+    // Define a result object to return
+    let result: { responseText?: string; events?: StreamToolCallsGeneration[] } = {};
 
     let botResponse = '';
     let conversationId = '';
@@ -435,6 +440,10 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
             setConversation({ messages: [...newMessages, finalMessage] });
             setStreamingMessage(null);
 
+            // Update our result object
+            result.responseText = finalMessage.text;
+            result.events = toolEvents;
+
             if (shouldUpdateConversationTitle(newMessages)) {
               handleUpdateConversationTitle(conversationId);
             }
@@ -490,8 +499,14 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
         setIsStreaming(false);
         setStreamingMessage(null);
         setPendingMessage(null);
+        
+        // Set error state in result
+        result.responseText = `Error: ${(e as Error).message || 'An unknown error occurred'}`;
       },
     });
+    
+    // Return the result object with response text and events
+    return result;
   };
 
   const getChatRequest = (message: string, overrides?: ChatRequestOverrides): CohereChatRequest => {
@@ -537,18 +552,26 @@ export const useChat = (config?: { onSend?: (msg: string) => void }) => {
       await queryClient.invalidateQueries({ queryKey: ['listFiles'] });
     }
 
-    newMessages = newMessages.concat({
-      type: MessageType.USER,
-      text: message,
-      files: composerFiles,
-    });
+    // Check if this is a hidden regeneration (from the flow diagram)
+    // If so, don't add a new user message to the conversation
+    const isHiddenRegeneration = overrides?.isHiddenRegeneration === true;
 
-    await handleStreamConverse({
+    if (!isHiddenRegeneration) {
+      newMessages = newMessages.concat({
+        type: MessageType.USER,
+        text: message,
+        files: composerFiles,
+      });
+    }
+
+    const result = await handleStreamConverse({
       newMessages,
       request,
       headers,
       streamConverse: streamChat,
     });
+    
+    return result;
   };
 
   const handleRetry = () => {
