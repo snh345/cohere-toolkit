@@ -1078,121 +1078,6 @@ const PlanFlowDiagram: React.FC<PlanFlowDiagramProps> = ({
     };
   }, [isOpen, setEdges]);
 
-//   return (
-//     <Modal
-//       title="Plan Flow Diagram"
-//       isOpen={isOpen}
-//       onClose={onClose}
-//     >
-//       <div 
-//         className="w-full" 
-//         style={{ height: "500px", width: "500px" }} // Increased height for better visibility
-//       >
-//         {!loaded ? (
-//           <div className="flex h-full items-center justify-center">
-//             <p>Loading diagram...</p>
-//           </div>
-//         ) : nodes.length === 0 ? (
-//           <div className="flex h-full items-center justify-center">
-//             <p>No plan steps available to display</p>
-//           </div>
-//         ) : (
-//           <ReactFlowProvider>
-//             <FlowDiagramContent
-//               nodes={nodes}
-//               selectedNodeId = {selectedNodeId}
-//               edges={edges}
-//               onNodesChange={onNodesChange}
-//               onEdgesChange={onEdgesChange}
-//               onConnect={onConnect}
-//               onNodeClick={onNodeClick}
-//               nodeTypes={nodeTypes}
-//               getIconComponent={getIconComponent}
-//               createEdge={createEdge}
-//               onCreateBranch={createBranch}
-//               toggleAltBranches={toggleAltBranches}
-//               altBranchesVisible={!altBranchesVisible}
-//             />
-//           </ReactFlowProvider>
-//         )}
-//       </div>
-//     </Modal>
-//   );
-// };
-
-// export default PlanFlowDiagram;
-
-// New function to prepare data for regeneration
-// const prepareRegenerationData = (): RegenerationData => {
-//   // Sort nodes by their vertical position to maintain order
-//   const sortedNodes = [...nodes].sort((a, b) => 
-//     (a.position.y || 0) - (b.position.y || 0)
-//   );
-  
-//   // Extract just the data we need
-//   const nodesData = sortedNodes.map(node => ({
-//     id: node.id,
-//     content: node.data.content,
-//     title: node.data.title,
-//     branchType: node.data.branchType || 'primary',
-//     position: { 
-//       x: node.position.x || 0, 
-//       y: node.position.y || 0 
-//     }
-//   }));
-// const prepareRegenerationData = (): RegenerationData => {
-//   // First get all primary nodes in vertical order (main flow)
-//   const primaryNodes = [...nodes]
-//     .filter(node => node.data.branchType === 'primary' || !node.data.branchType)
-//     .sort((a, b) => (a.position.y || 0) - (b.position.y || 0));
-  
-//   // Create a map of primary nodes with their alternative branches
-//   const nodesWithAlternatives = primaryNodes.map(primaryNode => {
-//     // Find all edges where this primary node is the source
-//     const outgoingEdges = edges.filter(edge => edge.source === primaryNode.id);
-    
-//     // Find all alternative nodes connected directly from this primary node
-//     const alternatives = outgoingEdges
-//       .map(edge => nodes.find(n => n.id === edge.target))
-//       .filter(node => node && node.data.branchType === 'alternative')
-//       .map(node => ({
-//         id: node.id,
-//         content: node.data.content,
-//         title: node.data.title,
-//         branchType: 'alternative',
-//         parentId: primaryNode.id, // Track relationship to parent node
-//         position: { x: node.position.x || 0, y: node.position.y || 0 }
-//       }));
-    
-//     // Return the primary node with its alternatives
-//     return {
-//       id: primaryNode.id,
-//       content: primaryNode.data.content,
-//       title: primaryNode.data.title,
-//       branchType: 'primary',
-//       position: { x: primaryNode.position.x || 0, y: primaryNode.position.y || 0 },
-//       alternatives
-//     };
-//   });
-  
-//   // Extract edge data with branch types
-//   const edgesData = edges.map(edge => {
-//     // Find source node to determine branch type
-//     const sourceNode = nodes.find(n => n.id === edge.source);
-//     const branchType = sourceNode?.data?.branchType || 'primary';
-    
-//     return {
-//       source: edge.source,
-//       target: edge.target,
-//       branchType
-//     };
-//   });
-  
-//   return {
-//     nodes: nodesData,
-//     edges: edgesData
-//   };
-// };
 const prepareRegenerationData = (): RegenerationData => {
   // Get all nodes, sorted by position for the main path
   const allNodes = [...nodes].sort((a, b) => 
@@ -1519,6 +1404,41 @@ const handleRegenerate = async () => {
 };
 
 // Now we'll modify the return statement to include our regenerate button in the Modal
+  // Template selector component
+  const TemplateSelector = ({ 
+    templates, 
+    selectedTemplate, 
+    onSelectTemplate 
+  }: {
+    templates: FlowTemplate[],
+    selectedTemplate: string,
+    onSelectTemplate: (templateId: string) => void
+  }) => {
+    return (
+      <div className="flex flex-col bg-gray-900 border-b border-gray-800 p-2 mb-3">
+        <div className="text-xs text-gray-400 mb-2">Select a flow template:</div>
+        <div className="flex flex-wrap gap-2">
+          {templates.map(template => (
+            <button
+              key={template.id}
+              className={`px-2 py-1 text-xs rounded ${
+                selectedTemplate === template.id
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+              }`}
+              onClick={() => onSelectTemplate(template.id)}
+            >
+              {template.name}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-gray-500 mt-1">
+          {templates.find(t => t.id === selectedTemplate)?.description || ''}
+        </div>
+      </div>
+    );
+  };
+
 return (
   <Modal
     title="Plan Flow Diagram"
@@ -1586,6 +1506,13 @@ return (
                 )}
               </button>
             </div>
+            
+            {/* Template Selector */}
+            <TemplateSelector 
+              templates={flowTemplates}
+              selectedTemplate={selectedTemplate}
+              onSelectTemplate={loadTemplate}
+            />
             
             {/* Main Flow content */}
             <div className="flex-1">
